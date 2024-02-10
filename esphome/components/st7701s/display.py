@@ -81,14 +81,7 @@ CONF_INVERT_DISPLAY = "invert_display"
 
 
 def _validate(config):
-    if CORE.is_esp8266 and config.get(CONF_MODEL) not in [
-        "M5STACK",
-        "TFT_2.4",
-        "TFT_2.4R",
-        "ILI9341",
-        "ILI9342",
-        "ST7789V",
-    ]:
+    if CORE.is_esp8266:
         raise cv.Invalid(
             "Provided model can't run on ESP8266. Use an ESP32 with PSRAM onboard"
         )
@@ -151,30 +144,29 @@ CONFIG_SCHEMA = cv.All(
 
 async def to_code(config):
     rhs = MODELS[config[CONF_MODEL]].new()
-    var = cg.new_Pvariable(
-        config[CONF_ID],
-        rhs,
-        config[CONF_RGB_PCLK],
-        config[CONF_RGB_DE],
-        config[CONF_RGB_VS],
-        config[CONF_RGB_HS],
-        config[CONF_RGB_D0],
-        config[CONF_RGB_D1],
-        config[CONF_RGB_D2],
-        config[CONF_RGB_D3],
-        config[CONF_RGB_D4],
-        config[CONF_RGB_D5],
-        config[CONF_RGB_D6],
-        config[CONF_RGB_D7],
-        config[CONF_RGB_D8],
-        config[CONF_RGB_D9],
-        config[CONF_RGB_D10],
-        config[CONF_RGB_D11],
-        config[CONF_RGB_D12],
-        config[CONF_RGB_D13],
-        config[CONF_RGB_D14],
-        config[CONF_RGB_D15],
-    )
+    var = cg.Pvariable(config[CONF_ID], rhs)
+    await display.register_display(var, config)
+
+    cg.add(var.set_rgb_pclk(config[CONF_RGB_PCLK]))
+    cg.add(var.set_rgb_de(config[CONF_RGB_DE]))
+    cg.add(var.set_rgb_vs(config[CONF_RGB_VS]))
+    cg.add(var.set_rgb_hs(config[CONF_RGB_HS]))
+    cg.add(var.set_rgb_d0(config[CONF_RGB_D0]))
+    cg.add(var.set_rgb_d1(config[CONF_RGB_D1]))
+    cg.add(var.set_rgb_d2(config[CONF_RGB_D2]))
+    cg.add(var.set_rgb_d3(config[CONF_RGB_D3]))
+    cg.add(var.set_rgb_d4(config[CONF_RGB_D4]))
+    cg.add(var.set_rgb_d5(config[CONF_RGB_D5]))
+    cg.add(var.set_rgb_d6(config[CONF_RGB_D6]))
+    cg.add(var.set_rgb_d7(config[CONF_RGB_D7]))
+    cg.add(var.set_rgb_d8(config[CONF_RGB_D8]))
+    cg.add(var.set_rgb_d9(config[CONF_RGB_D9]))
+    cg.add(var.set_rgb_d10(config[CONF_RGB_D10]))
+    cg.add(var.set_rgb_d11(config[CONF_RGB_D11]))
+    cg.add(var.set_rgb_d12(config[CONF_RGB_D12]))
+    cg.add(var.set_rgb_d13(config[CONF_RGB_D13]))
+    cg.add(var.set_rgb_d14(config[CONF_RGB_D14]))
+    cg.add(var.set_rgb_d15(config[CONF_RGB_D15]))
 
     await display.register_display(var, config)
     #if CONF_COLOR_ORDER in config:
