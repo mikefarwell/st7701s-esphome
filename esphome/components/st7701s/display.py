@@ -41,9 +41,9 @@ CONF_COL_START = "col_start"
 CONF_EIGHT_BIT_COLOR = "eight_bit_color"
 CONF_USE_BGR = "use_bgr"
 
-#SPIST7701S = ST7701S_ns.class_(
-#    "ST7701S", cg.PollingComponent, display.DisplayBuffer, spi.SPIDevice
-#)
+PARALLELST7701S = ST7701S_ns.class_(
+    "ST7701S", cg.PollingComponent, display.DisplayBuffer
+)
 ST7701SModel = ST7701S_ns.enum("ST7701SModel")
 
 MODELS = {
@@ -61,7 +61,7 @@ ST7701S_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
 CONFIG_SCHEMA = cv.All(
     ST7701S_SCHEMA.extend(
         {
-            cv.GenerateID(): cv.declare_id(SPIST7701S),
+            cv.GenerateID(): cv.declare_id(PARALLELST7701S),
             cv.Required(CONF_RGB_PCLK): pins.gpio_output_pin_schema,
             cv.Required(CONF_RGB_DE): pins.gpio_output_pin_schema,
             cv.Required(CONF_RGB_VS): pins.gpio_output_pin_schema,
