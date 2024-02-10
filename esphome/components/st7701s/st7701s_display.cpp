@@ -1,490 +1,398 @@
-#include "ST7701S.h"
-#include "esphome/core/log.h"
-#include "esphome/core/helpers.h"
+#include "ili9xxx_display.h"
+#include "esphome/core/application.h"
 #include "esphome/core/hal.h"
+#include "esphome/core/helpers.h"
+#include "esphome/core/log.h"
 
 namespace esphome {
-namespace ST7701S {
+namespace ili9xxx {
 
-static const uint8_t ST_CMD_DELAY = 0x80;  // special signifier for command lists
+static const uint16_t SPI_SETUP_US = 100;         // estimated fixed overhead in microseconds for an SPI write
+static const uint16_t SPI_MAX_BLOCK_SIZE = 4092;  // Max size of continuous SPI transfer
 
-static const uint8_t ST77XX_NOP = 0x00;
-static const uint8_t ST77XX_SWRESET = 0x01;
-static const uint8_t ST77XX_RDDID = 0x04;
-static const uint8_t ST77XX_RDDST = 0x09;
+// store a 16 bit value in a buffer, big endian.
+static inline void put16_be(uint8_t *buf, uint16_t value) {
+  buf[0] = value >> 8;
+  buf[1] = value;
+}
 
-static const uint8_t ST77XX_SLPIN = 0x10;
-static const uint8_t ST77XX_SLPOUT = 0x11;
-static const uint8_t ST77XX_PTLON = 0x12;
-static const uint8_t ST77XX_NORON = 0x13;
+void ST7701SDisplay::set_madctl() {
+  // custom x/y transform and color order
+  uint8_t mad = this->color_order_ == display::COLOR_ORDER_BGR ? MADCTL_BGR : MADCTL_RGB;
+  if (this->swap_xy_)
+    mad |= MADCTL_MV;
+  if (this->mirror_x_)
+    mad |= MADCTL_MX;
+  if (this->mirror_y_)
+    mad |= MADCTL_MY;
+  this->command(ST7701S_MADCTL);
+  this->data(mad);
+  esph_log_d(TAG, "Wrote MADCTL 0x%02X", mad);
+}
 
-static const uint8_t ST77XX_INVOFF = 0x20;
-static const uint8_t ST77XX_INVON = 0x21;
-static const uint8_t ST77XX_DISPOFF = 0x28;
-static const uint8_t ST77XX_DISPON = 0x29;
-static const uint8_t ST77XX_CASET = 0x2A;
-static const uint8_t ST77XX_RASET = 0x2B;
-static const uint8_t ST77XX_RAMWR = 0x2C;
-static const uint8_t ST77XX_RAMRD = 0x2E;
+void ST7701SDisplay::setup() {
+  ESP_LOGD(TAG, "Setting up ILI9xxx");
 
-static const uint8_t ST77XX_PTLAR = 0x30;
-static const uint8_t ST77XX_TEOFF = 0x34;
-static const uint8_t ST77XX_TEON = 0x35;
-static const uint8_t ST77XX_MADCTL = 0x36;
-static const uint8_t ST77XX_COLMOD = 0x3A;
+  this->setup_pins_();
+  this->init_lcd_();
 
-static const uint8_t ST77XX_MADCTL_MY = 0x80;
-static const uint8_t ST77XX_MADCTL_MX = 0x40;
-static const uint8_t ST77XX_MADCTL_MV = 0x20;
-static const uint8_t ST77XX_MADCTL_ML = 0x10;
-static const uint8_t ST77XX_MADCTL_RGB = 0x00;
+  this->set_madctl();
+  this->command(this->pre_invertcolors_ ? ST7701S_INVON : ST7701S_INVOFF);
+  this->x_low_ = this->width_;
+  this->y_low_ = this->height_;
+  this->x_high_ = 0;
+  this->y_high_ = 0;
 
-static const uint8_t ST77XX_RDID1 = 0xDA;
-static const uint8_t ST77XX_RDID2 = 0xDB;
-static const uint8_t ST77XX_RDID3 = 0xDC;
-static const uint8_t ST77XX_RDID4 = 0xDD;
+  if (this->buffer_color_mode_ == BITS_16) {
+    this->init_internal_(this->get_buffer_length_() * 2);
+    if (this->buffer_ != nullptr) {
+      return;
+    }
+    this->buffer_color_mode_ = BITS_8;
+  }
+  this->init_internal_(this->get_buffer_length_());
+  if (this->buffer_ == nullptr) {
+    this->mark_failed();
+  }
+}
 
-// Some register settings
-static const uint8_t ST7701S_MADCTL_BGR = 0x08;
+void ST7701SDisplay::setup_pins_() {
+  this->dc_pin_->setup();  // OUTPUT
+  this->dc_pin_->digital_write(false);
+  if (this->reset_pin_ != nullptr) {
+    this->reset_pin_->setup();  // OUTPUT
+    this->reset_pin_->digital_write(true);
+  }
 
-static const uint8_t ST7701S_MADCTL_MH = 0x04;
-
-static const uint8_t ST7701S_FRMCTR1 = 0xB1;
-static const uint8_t ST7701S_FRMCTR2 = 0xB2;
-static const uint8_t ST7701S_FRMCTR3 = 0xB3;
-static const uint8_t ST7701S_INVCTR = 0xB4;
-static const uint8_t ST7701S_DISSET5 = 0xB6;
-
-static const uint8_t ST7701S_PWCTR1 = 0xC0;
-static const uint8_t ST7701S_PWCTR2 = 0xC1;
-static const uint8_t ST7701S_PWCTR3 = 0xC2;
-static const uint8_t ST7701S_PWCTR4 = 0xC3;
-static const uint8_t ST7701S_PWCTR5 = 0xC4;
-static const uint8_t ST7701S_VMCTR1 = 0xC5;
-
-static const uint8_t ST7701S_PWCTR6 = 0xFC;
-
-static const uint8_t ST7701S_GMCTRP1 = 0xE0;
-static const uint8_t ST7701S_GMCTRN1 = 0xE1;
-
-// clang-format off
-static const uint8_t PROGMEM
-  BCMD[] = {                        // Init commands for 7735B screens
-    18,                             // 18 commands in list:
-    ST77XX_SWRESET,   ST_CMD_DELAY, //  1: Software reset, no args, w/delay
-      50,                           //     50 ms delay
-    ST77XX_SLPOUT,    ST_CMD_DELAY, //  2: Out of sleep mode, no args, w/delay
-      255,                          //     255 = max (500 ms) delay
-    ST77XX_COLMOD,  1+ST_CMD_DELAY, //  3: Set color mode, 1 arg + delay:
-      0x05,                         //     16-bit color
-      10,                           //     10 ms delay
-    ST7701S_FRMCTR1, 3+ST_CMD_DELAY, //  4: Frame rate control, 3 args + delay:
-      0x00,                         //     fastest refresh
-      0x06,                         //     6 lines front porch
-      0x03,                         //     3 lines back porch
-      10,                           //     10 ms delay
-    ST77XX_MADCTL,  1,              //  5: Mem access ctl (directions), 1 arg:
-      0x08,                         //     Row/col addr, bottom-top refresh
-    ST7701S_DISSET5, 2,              //  6: Display settings #5, 2 args:
-      0x15,                         //     1 clk cycle nonoverlap, 2 cycle gate
-                                    //     rise, 3 cycle osc equalize
-      0x02,                         //     Fix on VTL
-    ST7701S_INVCTR,  1,              //  7: Display inversion control, 1 arg:
-      0x0,                          //     Line inversion
-    ST7701S_PWCTR1,  2+ST_CMD_DELAY, //  8: Power control, 2 args + delay:
-      0x02,                         //     GVDD = 4.7V
-      0x70,                         //     1.0uA
-      10,                           //     10 ms delay
-    ST7701S_PWCTR2,  1,              //  9: Power control, 1 arg, no delay:
-      0x05,                         //     VGH = 14.7V, VGL = -7.35V
-    ST7701S_PWCTR3,  2,              // 10: Power control, 2 args, no delay:
-      0x01,                         //     Opamp current small
-      0x02,                         //     Boost frequency
-    ST7701S_VMCTR1,  2+ST_CMD_DELAY, // 11: Power control, 2 args + delay:
-      0x3C,                         //     VCOMH = 4V
-      0x38,                         //     VCOML = -1.1V
-      10,                           //     10 ms delay
-    ST7701S_PWCTR6,  2,              // 12: Power control, 2 args, no delay:
-      0x11, 0x15,
-    ST7701S_GMCTRP1,16,              // 13: Gamma Adjustments (pos. polarity), 16 args + delay:
-      0x09, 0x16, 0x09, 0x20,       //     (Not entirely necessary, but provides
-      0x21, 0x1B, 0x13, 0x19,       //      accurate colors)
-      0x17, 0x15, 0x1E, 0x2B,
-      0x04, 0x05, 0x02, 0x0E,
-    ST7701S_GMCTRN1,16+ST_CMD_DELAY, // 14: Gamma Adjustments (neg. polarity), 16 args + delay:
-      0x0B, 0x14, 0x08, 0x1E,       //     (Not entirely necessary, but provides
-      0x22, 0x1D, 0x18, 0x1E,       //      accurate colors)
-      0x1B, 0x1A, 0x24, 0x2B,
-      0x06, 0x06, 0x02, 0x0F,
-      10,                           //     10 ms delay
-    ST77XX_CASET,   4,              // 15: Column addr set, 4 args, no delay:
-      0x00, 0x02,                   //     XSTART = 2
-      0x00, 0x81,                   //     XEND = 129
-    ST77XX_RASET,   4,              // 16: Row addr set, 4 args, no delay:
-      0x00, 0x02,                   //     XSTART = 1
-      0x00, 0x81,                   //     XEND = 160
-    ST77XX_NORON,     ST_CMD_DELAY, // 17: Normal display on, no args, w/delay
-      10,                           //     10 ms delay
-    ST77XX_DISPON,    ST_CMD_DELAY, // 18: Main screen turn on, no args, delay
-      255 },                        //     255 = max (500 ms) delay
-
-  RCMD1[] = {                       // 7735R init, part 1 (red or green tab)
-    15,                             // 15 commands in list:
-    ST77XX_SWRESET,   ST_CMD_DELAY, //  1: Software reset, 0 args, w/delay
-      150,                          //     150 ms delay
-    ST77XX_SLPOUT,    ST_CMD_DELAY, //  2: Out of sleep mode, 0 args, w/delay
-      255,                          //     500 ms delay
-    ST7701S_FRMCTR1, 3,              //  3: Framerate ctrl - normal mode, 3 arg:
-      0x01, 0x2C, 0x2D,             //     Rate = fosc/(1x2+40) * (LINE+2C+2D)
-    ST7701S_FRMCTR2, 3,              //  4: Framerate ctrl - idle mode, 3 args:
-      0x01, 0x2C, 0x2D,             //     Rate = fosc/(1x2+40) * (LINE+2C+2D)
-    ST7701S_FRMCTR3, 6,              //  5: Framerate - partial mode, 6 args:
-      0x01, 0x2C, 0x2D,             //     Dot inversion mode
-      0x01, 0x2C, 0x2D,             //     Line inversion mode
-    ST7701S_INVCTR,  1,              //  6: Display inversion ctrl, 1 arg:
-      0x07,                         //     No inversion
-    ST7701S_PWCTR1,  3,              //  7: Power control, 3 args, no delay:
-      0xA2,
-      0x02,                         //     -4.6V
-      0x84,                         //     AUTO mode
-    ST7701S_PWCTR2,  1,              //  8: Power control, 1 arg, no delay:
-      0xC5,                         //     VGH25=2.4C VGSEL=-10 VGH=3 * AVDD
-    ST7701S_PWCTR3,  2,              //  9: Power control, 2 args, no delay:
-      0x0A,                         //     Opamp current small
-      0x00,                         //     Boost frequency
-    ST7701S_PWCTR4,  2,              // 10: Power control, 2 args, no delay:
-      0x8A,                         //     BCLK/2,
-      0x2A,                         //     opamp current small & medium low
-    ST7701S_PWCTR5,  2,              // 11: Power control, 2 args, no delay:
-      0x8A, 0xEE,
-    ST7701S_VMCTR1,  1,              // 12: Power control, 1 arg, no delay:
-      0x0E,
-    ST77XX_INVOFF,  0,              // 13: Don't invert display, no args
-    ST77XX_MADCTL,  1,              // 14: Mem access ctl (directions), 1 arg:
-      0xC8,                         //     row/col addr, bottom-top refresh
-    ST77XX_COLMOD,  1,              // 15: set color mode, 1 arg, no delay:
-      0x05 },                       //     16-bit color
-
-  RCMD2GREEN[] = {                  // 7735R init, part 2 (green tab only)
-    2,                              //  2 commands in list:
-    ST77XX_CASET,   4,              //  1: Column addr set, 4 args, no delay:
-      0x00, 0x02,                   //     XSTART = 0
-      0x00, 0x7F+0x02,              //     XEND = 127
-    ST77XX_RASET,   4,              //  2: Row addr set, 4 args, no delay:
-      0x00, 0x01,                   //     XSTART = 0
-      0x00, 0x9F+0x01 },            //     XEND = 159
-
-  RCMD2RED[] = {                    // 7735R init, part 2 (red tab only)
-    2,                              //  2 commands in list:
-    ST77XX_CASET,   4,              //  1: Column addr set, 4 args, no delay:
-      0x00, 0x00,                   //     XSTART = 0
-      0x00, 0x7F,                   //     XEND = 127
-    ST77XX_RASET,   4,              //  2: Row addr set, 4 args, no delay:
-      0x00, 0x00,                   //     XSTART = 0
-      0x00, 0x9F },                 //     XEND = 159
-
-  RCMD2GREEN144[] = {               // 7735R init, part 2 (green 1.44 tab)
-    2,                              //  2 commands in list:
-    ST77XX_CASET,   4,              //  1: Column addr set, 4 args, no delay:
-      0x00, 0x00,                   //     XSTART = 0
-      0x00, 0x7F,                   //     XEND = 127
-    ST77XX_RASET,   4,              //  2: Row addr set, 4 args, no delay:
-      0x00, 0x00,                   //     XSTART = 0
-      0x00, 0x7F },                 //     XEND = 127
-
-  RCMD2GREEN160X80[] = {            // 7735R init, part 2 (mini 160x80)
-    2,                              //  2 commands in list:
-    ST77XX_CASET,   4,              //  1: Column addr set, 4 args, no delay:
-      0x00, 0x00,                   //     XSTART = 0
-      0x00, 0x4F,                   //     XEND = 79
-    ST77XX_RASET,   4,              //  2: Row addr set, 4 args, no delay:
-      0x00, 0x00,                   //     XSTART = 0
-      0x00, 0x9F },                 //     XEND = 159
-
-  RCMD3[] = {                       // 7735R init, part 3 (red or green tab)
-    4,                              //  4 commands in list:
-    ST7701S_GMCTRP1, 16      ,       //  1: Gamma Adjustments (pos. polarity), 16 args + delay:
-      0x02, 0x1c, 0x07, 0x12,       //     (Not entirely necessary, but provides
-      0x37, 0x32, 0x29, 0x2d,       //      accurate colors)
-      0x29, 0x25, 0x2B, 0x39,
-      0x00, 0x01, 0x03, 0x10,
-    ST7701S_GMCTRN1, 16      ,       //  2: Gamma Adjustments (neg. polarity), 16 args + delay:
-      0x03, 0x1d, 0x07, 0x06,       //     (Not entirely necessary, but provides
-      0x2E, 0x2C, 0x29, 0x2D,       //      accurate colors)
-      0x2E, 0x2E, 0x37, 0x3F,
-      0x00, 0x00, 0x02, 0x10,
-    ST77XX_NORON,     ST_CMD_DELAY, //  3: Normal display on, no args, w/delay
-      10,                           //     10 ms delay
-    ST77XX_DISPON,    ST_CMD_DELAY, //  4: Main screen turn on, no args w/delay
-      100 };                        //     100 ms delay
-
-// clang-format on
-static const char *const TAG = "ST7701S";
-
-ST7701S::ST7701S(ST7701SModel model, int width, int height, int colstart, int rowstart, bool eightbitcolor, bool usebgr,
-               bool invert_colors)
-    : model_(model),
-      colstart_(colstart),
-      rowstart_(rowstart),
-      eightbitcolor_(eightbitcolor),
-      usebgr_(usebgr),
-      invert_colors_(invert_colors),
-      width_(width),
-      height_(height) {}
-
-void ST7701S::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up ST7701S...");
   this->spi_setup();
 
-  this->dc_pin_->setup();  // OUTPUT
-  this->cs_->setup();      // OUTPUT
-
-  this->dc_pin_->digital_write(true);
-  this->cs_->digital_write(true);
-
-  this->init_reset_();
-  delay(100);  // NOLINT
-
-  ESP_LOGD(TAG, "  START");
-  dump_config();
-  ESP_LOGD(TAG, "  END");
-
-  display_init_(RCMD1);
-
-  if (this->model_ == INITR_GREENTAB) {
-    display_init_(RCMD2GREEN);
-    colstart_ == 0 ? colstart_ = 2 : colstart_;
-    rowstart_ == 0 ? rowstart_ = 1 : rowstart_;
-  } else if ((this->model_ == INITR_144GREENTAB) || (this->model_ == INITR_HALLOWING)) {
-    height_ == 0 ? height_ = ST7701S_TFTHEIGHT_128 : height_;
-    width_ == 0 ? width_ = ST7701S_TFTWIDTH_128 : width_;
-    display_init_(RCMD2GREEN144);
-    colstart_ == 0 ? colstart_ = 2 : colstart_;
-    rowstart_ == 0 ? rowstart_ = 3 : rowstart_;
-  } else if (this->model_ == INITR_MINI_160X80) {
-    height_ == 0 ? height_ = ST7701S_TFTHEIGHT_160 : height_;
-    width_ == 0 ? width_ = ST7701S_TFTWIDTH_80 : width_;
-    display_init_(RCMD2GREEN160X80);
-    colstart_ == 0 ? colstart_ = 24 : colstart_;
-    rowstart_ == 0 ? rowstart_ = 0 : rowstart_;
-  } else {
-    // colstart, rowstart left at default '0' values
-    display_init_(RCMD2RED);
-  }
-  display_init_(RCMD3);
-
-  uint8_t data = 0;
-  if (this->model_ != INITR_HALLOWING) {
-    data = ST77XX_MADCTL_MX | ST77XX_MADCTL_MY;
-  }
-  if (this->usebgr_) {
-    data = data | ST7701S_MADCTL_BGR;
-  } else {
-    data = data | ST77XX_MADCTL_RGB;
-  }
-  sendcommand_(ST77XX_MADCTL, &data, 1);
-
-  if (this->invert_colors_)
-    sendcommand_(ST77XX_INVON, nullptr, 0);
-
-  this->init_internal_(this->get_buffer_length());
-  memset(this->buffer_, 0x00, this->get_buffer_length());
+  this->reset_();
 }
 
-void ST7701S::update() {
-  this->do_update_();
-  this->write_display_data_();
-}
-
-int ST7701S::get_height_internal() { return height_; }
-
-int ST7701S::get_width_internal() { return width_; }
-
-size_t ST7701S::get_buffer_length() {
-  if (this->eightbitcolor_) {
-    return size_t(this->get_width_internal()) * size_t(this->get_height_internal());
-  }
-  return size_t(this->get_width_internal()) * size_t(this->get_height_internal()) * 2;
-}
-
-void HOT ST7701S::draw_absolute_pixel_internal(int x, int y, Color color) {
-  if (x >= this->get_width_internal() || x < 0 || y >= this->get_height_internal() || y < 0)
-    return;
-
-  if (this->eightbitcolor_) {
-    const uint32_t color332 = display::ColorUtil::color_to_332(color);
-    uint16_t pos = (x + y * this->get_width_internal());
-    this->buffer_[pos] = color332;
-  } else {
-    const uint32_t color565 = display::ColorUtil::color_to_565(color);
-    uint16_t pos = (x + y * this->get_width_internal()) * 2;
-    this->buffer_[pos++] = (color565 >> 8) & 0xff;
-    this->buffer_[pos] = color565 & 0xff;
-  }
-}
-
-void ST7701S::init_reset_() {
-  if (this->reset_pin_ != nullptr) {
-    this->reset_pin_->setup();
-    this->reset_pin_->digital_write(true);
-    delay(1);
-    // Trigger Reset
-    this->reset_pin_->digital_write(false);
-    delay(10);
-    // Wake up
-    this->reset_pin_->digital_write(true);
-  }
-}
-const char *ST7701S::model_str_() {
-  switch (this->model_) {
-    case INITR_GREENTAB:
-      return "ST7701S GREENTAB";
-    case INITR_REDTAB:
-      return "ST7701S REDTAB";
-    case INITR_BLACKTAB:
-      return "ST7701S BLACKTAB";
-    case INITR_MINI_160X80:
-      return "ST7701S MINI160x80";
+void ST7701SDisplay::dump_config() {
+  LOG_DISPLAY("", "ili9xxx", this);
+  ESP_LOGCONFIG(TAG, "  Width Offset: %u", this->offset_x_);
+  ESP_LOGCONFIG(TAG, "  Height Offset: %u", this->offset_y_);
+  switch (this->buffer_color_mode_) {
+    case BITS_8_INDEXED:
+      ESP_LOGCONFIG(TAG, "  Color mode: 8bit Indexed");
+      break;
+    case BITS_16:
+      ESP_LOGCONFIG(TAG, "  Color mode: 16bit");
+      break;
     default:
-      return "Unknown";
+      ESP_LOGCONFIG(TAG, "  Color mode: 8bit 332 mode");
+      break;
   }
-}
-
-void ST7701S::display_init_(const uint8_t *addr) {
-  uint8_t num_commands, cmd, num_args;
-  uint16_t ms;
-
-  num_commands = progmem_read_byte(addr++);  // Number of commands to follow
-  while (num_commands--) {                   // For each command...
-    cmd = progmem_read_byte(addr++);         // Read command
-    num_args = progmem_read_byte(addr++);    // Number of args to follow
-    ms = num_args & ST_CMD_DELAY;            // If hibit set, delay follows args
-    num_args &= ~ST_CMD_DELAY;               // Mask out delay bit
-    this->sendcommand_(cmd, addr, num_args);
-    addr += num_args;
-
-    if (ms) {
-      ms = progmem_read_byte(addr++);  // Read post-command delay time (ms)
-      if (ms == 255)
-        ms = 500;  // If 255, delay for 500 ms
-      delay(ms);
-    }
+  if (this->is_18bitdisplay_) {
+    ESP_LOGCONFIG(TAG, "  18-Bit Mode: YES");
   }
-}
+  ESP_LOGCONFIG(TAG, "  Data rate: %dMHz", (unsigned) (this->data_rate_ / 1000000));
 
-void ST7701S::dump_config() {
-  LOG_DISPLAY("", "ST7701S", this);
-  ESP_LOGCONFIG(TAG, "  Model: %s", this->model_str_());
+  LOG_PIN("  Reset Pin: ", this->reset_pin_);
   LOG_PIN("  CS Pin: ", this->cs_);
   LOG_PIN("  DC Pin: ", this->dc_pin_);
-  LOG_PIN("  Reset Pin: ", this->reset_pin_);
-  ESP_LOGD(TAG, "  Buffer Size: %zu", this->get_buffer_length());
-  ESP_LOGD(TAG, "  Height: %d", this->height_);
-  ESP_LOGD(TAG, "  Width: %d", this->width_);
-  ESP_LOGD(TAG, "  ColStart: %d", this->colstart_);
-  ESP_LOGD(TAG, "  RowStart: %d", this->rowstart_);
+  LOG_PIN("  Busy Pin: ", this->busy_pin_);
+  ESP_LOGCONFIG(TAG, "  Color order: %s", this->color_order_ == display::COLOR_ORDER_BGR ? "BGR" : "RGB");
+  ESP_LOGCONFIG(TAG, "  Swap_xy: %s", YESNO(this->swap_xy_));
+  ESP_LOGCONFIG(TAG, "  Mirror_x: %s", YESNO(this->mirror_x_));
+  ESP_LOGCONFIG(TAG, "  Mirror_y: %s", YESNO(this->mirror_y_));
+
+  if (this->is_failed()) {
+    ESP_LOGCONFIG(TAG, "  => Failed to init Memory: YES!");
+  }
   LOG_UPDATE_INTERVAL(this);
 }
 
-void HOT ST7701S::writecommand_(uint8_t value) {
-  this->enable();
-  this->dc_pin_->digital_write(false);
-  this->write_byte(value);
-  this->dc_pin_->digital_write(true);
-  this->disable();
-}
+float ST7701SDisplay::get_setup_priority() const { return setup_priority::HARDWARE; }
 
-void HOT ST7701S::writedata_(uint8_t value) {
-  this->dc_pin_->digital_write(true);
-  this->enable();
-  this->write_byte(value);
-  this->disable();
-}
-
-void HOT ST7701S::sendcommand_(uint8_t cmd, const uint8_t *data_bytes, uint8_t num_data_bytes) {
-  this->writecommand_(cmd);
-  this->senddata_(data_bytes, num_data_bytes);
-}
-
-void HOT ST7701S::senddata_(const uint8_t *data_bytes, uint8_t num_data_bytes) {
-  this->dc_pin_->digital_write(true);  // pull DC high to indicate data
-  this->cs_->digital_write(false);
-  this->enable();
-  for (uint8_t i = 0; i < num_data_bytes; i++) {
-    this->write_byte(progmem_read_byte(data_bytes++));  // write byte - SPI library
+void ST7701SDisplay::fill(Color color) {
+  uint16_t new_color = 0;
+  this->x_low_ = 0;
+  this->y_low_ = 0;
+  this->x_high_ = this->get_width_internal() - 1;
+  this->y_high_ = this->get_height_internal() - 1;
+  switch (this->buffer_color_mode_) {
+    case BITS_8_INDEXED:
+      new_color = display::ColorUtil::color_to_index8_palette888(color, this->palette_);
+      break;
+    case BITS_16:
+      new_color = display::ColorUtil::color_to_565(color);
+      {
+        const uint32_t buffer_length_16_bits = this->get_buffer_length_() * 2;
+        if (((uint8_t) (new_color >> 8)) == ((uint8_t) new_color)) {
+          // Upper and lower is equal can use quicker memset operation. Takes ~20ms.
+          memset(this->buffer_, (uint8_t) new_color, buffer_length_16_bits);
+        } else {
+          // Slower set of both buffers. Takes ~30ms.
+          for (uint32_t i = 0; i < buffer_length_16_bits; i = i + 2) {
+            this->buffer_[i] = (uint8_t) (new_color >> 8);
+            this->buffer_[i + 1] = (uint8_t) new_color;
+          }
+        }
+      }
+      return;
+      break;
+    default:
+      new_color = display::ColorUtil::color_to_332(color, display::ColorOrder::COLOR_ORDER_RGB);
+      break;
   }
-  this->cs_->digital_write(true);
-  this->disable();
+  memset(this->buffer_, (uint8_t) new_color, this->get_buffer_length_());
 }
 
-void HOT ST7701S::write_display_data_() {
-  uint16_t offsetx = colstart_;
-  uint16_t offsety = rowstart_;
+void HOT ST7701SDisplay::draw_absolute_pixel_internal(int x, int y, Color color) {
+  if (x >= this->get_width_internal() || x < 0 || y >= this->get_height_internal() || y < 0) {
+    return;
+  }
+  uint32_t pos = (y * width_) + x;
+  uint16_t new_color;
+  bool updated = false;
+  switch (this->buffer_color_mode_) {
+    case BITS_8_INDEXED:
+      new_color = display::ColorUtil::color_to_index8_palette888(color, this->palette_);
+      break;
+    case BITS_16:
+      pos = pos * 2;
+      new_color = display::ColorUtil::color_to_565(color, display::ColorOrder::COLOR_ORDER_RGB);
+      if (this->buffer_[pos] != (uint8_t) (new_color >> 8)) {
+        this->buffer_[pos] = (uint8_t) (new_color >> 8);
+        updated = true;
+      }
+      pos = pos + 1;
+      new_color = new_color & 0xFF;
+      break;
+    default:
+      new_color = display::ColorUtil::color_to_332(color, display::ColorOrder::COLOR_ORDER_RGB);
+      break;
+  }
 
-  uint16_t x1 = offsetx;
-  uint16_t x2 = x1 + get_width_internal() - 1;
-  uint16_t y1 = offsety;
-  uint16_t y2 = y1 + get_height_internal() - 1;
+  if (this->buffer_[pos] != new_color) {
+    this->buffer_[pos] = new_color;
+    updated = true;
+  }
+  if (updated) {
+    // low and high watermark may speed up drawing from buffer
+    if (x < this->x_low_)
+      this->x_low_ = x;
+    if (y < this->y_low_)
+      this->y_low_ = y;
+    if (x > this->x_high_)
+      this->x_high_ = x;
+    if (y > this->y_high_)
+      this->y_high_ = y;
+  }
+}
 
-  this->enable();
+void ST7701SDisplay::update() {
+  if (this->prossing_update_) {
+    this->need_update_ = true;
+    return;
+  }
+  this->prossing_update_ = true;
+  do {
+    this->need_update_ = false;
+    this->do_update_();
+  } while (this->need_update_);
+  this->prossing_update_ = false;
+  this->display_();
+}
 
-  // set column(x) address
-  this->dc_pin_->digital_write(false);
-  this->write_byte(ST77XX_CASET);
-  this->dc_pin_->digital_write(true);
-  this->spi_master_write_addr_(x1, x2);
+void ST7701SDisplay::display_() {
+  uint8_t transfer_buffer[ST7701S_TRANSFER_BUFFER_SIZE];
+  // check if something was displayed
+  if ((this->x_high_ < this->x_low_) || (this->y_high_ < this->y_low_)) {
+    return;
+  }
 
-  // set Page(y) address
-  this->dc_pin_->digital_write(false);
-  this->write_byte(ST77XX_RASET);
-  this->dc_pin_->digital_write(true);
-  this->spi_master_write_addr_(y1, y2);
+  // we will only update the changed rows to the display
+  size_t const w = this->x_high_ - this->x_low_ + 1;
+  size_t const h = this->y_high_ - this->y_low_ + 1;
 
-  //  Memory Write
-  this->dc_pin_->digital_write(false);
-  this->write_byte(ST77XX_RAMWR);
-  this->dc_pin_->digital_write(true);
-
-  if (this->eightbitcolor_) {
-    for (size_t line = 0; line < this->get_buffer_length(); line = line + this->get_width_internal()) {
-      for (int index = 0; index < this->get_width_internal(); ++index) {
-        auto color332 = display::ColorUtil::to_color(this->buffer_[index + line], display::ColorOrder::COLOR_ORDER_RGB,
-                                                     display::ColorBitness::COLOR_BITNESS_332, true);
-
-        auto color = display::ColorUtil::color_to_565(color332);
-
-        this->write_byte((color >> 8) & 0xff);
-        this->write_byte(color & 0xff);
+  size_t mhz = this->data_rate_ / 1000000;
+  // estimate time for a single write
+  size_t sw_time = this->width_ * h * 16 / mhz + this->width_ * h * 2 / SPI_MAX_BLOCK_SIZE * SPI_SETUP_US * 2;
+  // estimate time for multiple writes
+  size_t mw_time = (w * h * 16) / mhz + w * h * 2 / ST7701S_TRANSFER_BUFFER_SIZE * SPI_SETUP_US;
+  ESP_LOGV(TAG,
+           "Start display(xlow:%d, ylow:%d, xhigh:%d, yhigh:%d, width:%d, "
+           "height:%zu, mode=%d, 18bit=%d, sw_time=%zuus, mw_time=%zuus)",
+           this->x_low_, this->y_low_, this->x_high_, this->y_high_, w, h, this->buffer_color_mode_,
+           this->is_18bitdisplay_, sw_time, mw_time);
+  auto now = millis();
+  if (this->buffer_color_mode_ == BITS_16 && !this->is_18bitdisplay_ && sw_time < mw_time) {
+    // 16 bit mode maps directly to display format
+    ESP_LOGV(TAG, "Doing single write of %zu bytes", this->width_ * h * 2);
+    set_addr_window_(0, this->y_low_, this->width_ - 1, this->y_high_);
+    this->write_array(this->buffer_ + this->y_low_ * this->width_ * 2, h * this->width_ * 2);
+  } else {
+    ESP_LOGV(TAG, "Doing multiple write");
+    size_t rem = h * w;  // remaining number of pixels to write
+    set_addr_window_(this->x_low_, this->y_low_, this->x_high_, this->y_high_);
+    size_t idx = 0;    // index into transfer_buffer
+    size_t pixel = 0;  // pixel number offset
+    size_t pos = this->y_low_ * this->width_ + this->x_low_;
+    while (rem-- != 0) {
+      uint16_t color_val;
+      switch (this->buffer_color_mode_) {
+        case BITS_8:
+          color_val = display::ColorUtil::color_to_565(display::ColorUtil::rgb332_to_color(this->buffer_[pos++]));
+          break;
+        case BITS_8_INDEXED:
+          color_val = display::ColorUtil::color_to_565(
+              display::ColorUtil::index8_to_color_palette888(this->buffer_[pos++], this->palette_));
+          break;
+        default:  // case BITS_16:
+          color_val = (buffer_[pos * 2] << 8) + buffer_[pos * 2 + 1];
+          pos++;
+          break;
+      }
+      if (this->is_18bitdisplay_) {
+        transfer_buffer[idx++] = (uint8_t) ((color_val & 0xF800) >> 8);  // Blue
+        transfer_buffer[idx++] = (uint8_t) ((color_val & 0x7E0) >> 3);   // Green
+        transfer_buffer[idx++] = (uint8_t) (color_val << 3);             // Red
+      } else {
+        put16_be(transfer_buffer + idx, color_val);
+        idx += 2;
+      }
+      if (idx == ST7701S_TRANSFER_BUFFER_SIZE) {
+        this->write_array(transfer_buffer, idx);
+        idx = 0;
+        App.feed_wdt();
+      }
+      // end of line? Skip to the next.
+      if (++pixel == w) {
+        pixel = 0;
+        pos += this->width_ - w;
       }
     }
+    // flush any balance.
+    if (idx != 0) {
+      this->write_array(transfer_buffer, idx);
+    }
+  }
+  this->end_data_();
+  ESP_LOGV(TAG, "Data write took %dms", (unsigned) (millis() - now));
+  // invalidate watermarks
+  this->x_low_ = this->width_;
+  this->y_low_ = this->height_;
+  this->x_high_ = 0;
+  this->y_high_ = 0;
+}
+
+// note that this bypasses the buffer and writes directly to the display.
+void ST7701SDisplay::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr,
+                                    display::ColorOrder order, display::ColorBitness bitness, bool big_endian,
+                                    int x_offset, int y_offset, int x_pad) {
+  if (w <= 0 || h <= 0)
+    return;
+  // if color mapping or software rotation is required, hand this off to the parent implementation. This will
+  // do color conversion pixel-by-pixel into the buffer and draw it later. If this is happening the user has not
+  // configured the renderer well.
+  if (this->rotation_ != display::DISPLAY_ROTATION_0_DEGREES || bitness != display::COLOR_BITNESS_565 || !big_endian ||
+      this->is_18bitdisplay_) {
+    return display::Display::draw_pixels_at(x_start, y_start, w, h, ptr, order, bitness, big_endian, x_offset, y_offset,
+                                            x_pad);
+  }
+  this->set_addr_window_(x_start, y_start, x_start + w - 1, y_start + h - 1);
+  // x_ and y_offset are offsets into the source buffer, unrelated to our own offsets into the display.
+  if (x_offset == 0 && x_pad == 0 && y_offset == 0) {
+    // we could deal here with a non-zero y_offset, but if x_offset is zero, y_offset probably will be so don't bother
+    this->write_array(ptr, w * h * 2);
   } else {
-    this->write_array(this->buffer_, this->get_buffer_length());
+    auto stride = x_offset + w + x_pad;
+    for (size_t y = 0; y != h; y++) {
+      this->write_array(ptr + (y + y_offset) * stride + x_offset, w * 2);
+    }
   }
-  this->disable();
+  this->end_data_();
 }
 
-void ST7701S::spi_master_write_addr_(uint16_t addr1, uint16_t addr2) {
-  static uint8_t byte[4];
-  byte[0] = (addr1 >> 8) & 0xFF;
-  byte[1] = addr1 & 0xFF;
-  byte[2] = (addr2 >> 8) & 0xFF;
-  byte[3] = addr2 & 0xFF;
+// should return the total size: return this->get_width_internal() * this->get_height_internal() * 2 // 16bit color
+// values per bit is huge
+uint32_t ST7701SDisplay::get_buffer_length_() { return this->get_width_internal() * this->get_height_internal(); }
 
+void ST7701SDisplay::command(uint8_t value) {
+  this->start_command_();
+  this->write_byte(value);
+  this->end_command_();
+}
+
+void ST7701SDisplay::data(uint8_t value) {
+  this->start_data_();
+  this->write_byte(value);
+  this->end_data_();
+}
+
+void ST7701SDisplay::send_command(uint8_t command_byte, const uint8_t *data_bytes, uint8_t num_data_bytes) {
+  this->command(command_byte);  // Send the command byte
+  this->start_data_();
+  this->write_array(data_bytes, num_data_bytes);
+  this->end_data_();
+}
+
+void ST7701SDisplay::start_command_() {
+  this->dc_pin_->digital_write(false);
+  this->enable();
+}
+void ST7701SDisplay::start_data_() {
   this->dc_pin_->digital_write(true);
-  this->write_array(byte, 4);
+  this->enable();
 }
 
-void ST7701S::spi_master_write_color_(uint16_t color, uint16_t size) {
-  static uint8_t byte[1024];
-  int index = 0;
-  for (int i = 0; i < size; i++) {
-    byte[index++] = (color >> 8) & 0xFF;
-    byte[index++] = color & 0xFF;
+void ST7701SDisplay::end_command_() { this->disable(); }
+void ST7701SDisplay::end_data_() { this->disable(); }
+
+void ST7701SDisplay::reset_() {
+  if (this->reset_pin_ != nullptr) {
+    this->reset_pin_->digital_write(false);
+    delay(20);
+    this->reset_pin_->digital_write(true);
+    delay(20);
   }
-
-  this->dc_pin_->digital_write(true);
-  return write_array(byte, size * 2);
 }
 
-}  // namespace ST7701S
+void ST7701SDisplay::init_lcd_() {
+  uint8_t cmd, x, num_args;
+  const uint8_t *addr = this->init_sequence_;
+  while ((cmd = *addr++) > 0) {
+    x = *addr++;
+    num_args = x & 0x7F;
+    this->send_command(cmd, addr, num_args);
+    addr += num_args;
+    if (x & 0x80)
+      delay(150);  // NOLINT
+  }
+}
+
+// Tell the display controller where we want to draw pixels.
+void ST7701SDisplay::set_addr_window_(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
+  x1 += this->offset_x_;
+  x2 += this->offset_x_;
+  y1 += this->offset_y_;
+  y2 += this->offset_y_;
+  this->command(ST7701S_CASET);
+  this->data(x1 >> 8);
+  this->data(x1 & 0xFF);
+  this->data(x2 >> 8);
+  this->data(x2 & 0xFF);
+  this->command(ST7701S_PASET);  // Page address set
+  this->data(y1 >> 8);
+  this->data(y1 & 0xFF);
+  this->data(y2 >> 8);
+  this->data(y2 & 0xFF);
+  this->command(ST7701S_RAMWR);  // Write to RAM
+  this->start_data_();
+}
+
+void ST7701SDisplay::invert_colors(bool invert) {
+  this->pre_invertcolors_ = invert;
+  if (is_ready()) {
+    this->command(invert ? ST7701S_INVON : ST7701S_INVOFF);
+  }
+}
+
+int ST7701SDisplay::get_width_internal() { return this->width_; }
+int ST7701SDisplay::get_height_internal() { return this->height_; }
+
+}  // namespace ili9xxx
 }  // namespace esphome
