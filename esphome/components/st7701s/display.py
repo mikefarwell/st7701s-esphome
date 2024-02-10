@@ -93,8 +93,8 @@ CONFIG_SCHEMA = cv.All(
     font.validate_pillow_installed,
     display.FULL_DISPLAY_SCHEMA.extend(
         {
-#            cv.GenerateID(): cv.declare_id(ST7701SDisplay),
-#            cv.Required(CONF_MODEL): cv.enum(MODELS, upper=True, space="_"),
+            cv.GenerateID(): cv.declare_id(ST7701SDisplay),
+            cv.Required(CONF_MODEL): cv.enum(MODELS, upper=True, space="_"),
 #            cv.Optional(CONF_DIMENSIONS): cv.Any(
 #                cv.dimensions,
 #                cv.Schema(
