@@ -13,33 +13,29 @@ from . import ST7701S_ns
 
 CODEOWNERS = ["@mikefarwell"]
 
-CONF_RGB_PCLK = "RGB_PCLK"
-CONF_RGB_DE = "RGB_DE"
-CONF_RGB_VS = "RGB_VS"
-CONF_RGB_HS = "RGB_HS"
-CONF_RGB_D0 = "RGB_D0"
-CONF_RGB_D1 = "RGB_D1"
-CONF_RGB_D2 = "RGB_D2"
-CONF_RGB_D3 = "RGB_D3"
-CONF_RGB_D4 = "RGB_D4"
-CONF_RGB_D5 = "RGB_D5"
-CONF_RGB_D6 = "RGB_D6"
-CONF_RGB_D7 = "RGB_D7"
-CONF_RGB_D8 = "RGB_D8"
-CONF_RGB_D9 = "RGB_D9"
-CONF_RGB_D10 = "RGB_D10"
-CONF_RGB_D11 = "RGB_D11"
-CONF_RGB_D12 = "RGB_D12"
-CONF_RGB_D13 = "RGB_D13"
-CONF_RGB_D14 = "RGB_D14"
-CONF_RGB_D15 = "RGB_D15"
-CONF_LCD_BL = "LCD_BL"
+CONF_RGB_PCLK = "rgb_pclk"
+CONF_RGB_DE = "rgb_de"
+CONF_RGB_VS = "rgb_vs"
+CONF_RGB_HS = "rgb_hs"
+CONF_RGB_D0 = "rgb_d0"
+CONF_RGB_D1 = "rgb_d1"
+CONF_RGB_D2 = "rgb_d2"
+CONF_RGB_D3 = "rgb_d3"
+CONF_RGB_D4 = "rgb_d4"
+CONF_RGB_D5 = "rgb_d5"
+CONF_RGB_D6 = "rgb_d6"
+CONF_RGB_D7 = "rgb_d7"
+CONF_RGB_D8 = "rgb_d8"
+CONF_RGB_D9 = "rgb_d9"
+CONF_RGB_D10 = "rgb_d10"
+CONF_RGB_D11 = "rgb_d11"
+CONF_RGB_D12 = "rgb_d12"
+CONF_RGB_D13 = "rgb_d13"
+CONF_RGB_D14 = "rgb_d14"
+CONF_RGB_D15 = "rgb_d15"
+CONF_LCD_BL = "lcd_bl"
 CONF_DEVICE_WIDTH = "device_width"
 CONF_DEVICE_HEIGHT = "device_height"
-CONF_ROW_START = "row_start"
-CONF_COL_START = "col_start"
-CONF_EIGHT_BIT_COLOR = "eight_bit_color"
-CONF_USE_BGR = "use_bgr"
 
 PARALLELST7701S = ST7701S_ns.class_(
     "ST7701S", cg.PollingComponent, display.DisplayBuffer
@@ -100,9 +96,6 @@ CONFIG_SCHEMA = cv.All(
 async def setup_ST7701S(var, config):
     await display.register_display(var, config)
 
-    if CONF_RESET_PIN in config:
-        reset = await cg.gpio_pin_expression(config[CONF_RESET_PIN])
-        cg.add(var.set_reset_pin(reset))
     if CONF_LAMBDA in config:
         lambda_ = await cg.process_lambda(
             config[CONF_LAMBDA], [(display.DisplayRef, "it")], return_type=cg.void
@@ -114,6 +107,27 @@ async def to_code(config):
     var = cg.new_Pvariable(
         config[CONF_ID],
         config[CONF_MODEL],
+        config[CONF_RGB_PCLK],
+        config[CONF_RGB_DE],
+        config[CONF_RGB_VS],
+        config[CONF_RGB_HS],
+        config[CONF_RGB_D0],
+        config[CONF_RGB_D1],
+        config[CONF_RGB_D2],
+        config[CONF_RGB_D3],
+        config[CONF_RGB_D4],
+        config[CONF_RGB_D5],
+        config[CONF_RGB_D6],
+        config[CONF_RGB_D7],
+        config[CONF_RGB_D8],
+        config[CONF_RGB_D9],
+        config[CONF_RGB_D10],
+        config[CONF_RGB_D11],
+        config[CONF_RGB_D12],
+        config[CONF_RGB_D13],
+        config[CONF_RGB_D14],
+        config[CONF_RGB_D15],
+        config[CONF_LCD_BL],
         config[CONF_DEVICE_WIDTH],
         config[CONF_DEVICE_HEIGHT],
         config[CONF_COL_START],
