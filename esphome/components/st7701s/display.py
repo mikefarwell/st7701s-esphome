@@ -129,7 +129,7 @@ async def to_code(config):
 
     await display.register_display(var, config)
     #dc = await cg.gpio_pin_expression(config[CONF_DC_PIN])
-    cg.add(var.set_dc_pin(dc))
+    #cg.add(var.set_dc_pin(dc))
     #if CONF_COLOR_ORDER in config:
     #    cg.add(var.set_color_order(COLOR_ORDERS[config[CONF_COLOR_ORDER]]))
     #if CONF_TRANSFORM in config:
