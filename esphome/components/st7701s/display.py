@@ -92,31 +92,31 @@ def _validate(config):
 CONFIG_SCHEMA = cv.All(
     font.validate_pillow_installed,
     display.FULL_DISPLAY_SCHEMA
-#    .extend(
-#        {
-#            cv.GenerateID(): cv.declare_id(ST7701SDisplay),
-#            cv.Required(CONF_MODEL): cv.enum(MODELS, upper=True, space="_"),
-#            cv.Optional(CONF_DIMENSIONS): cv.Any(
-#                cv.dimensions,
-#                cv.Schema(
-#                    {
-#                        cv.Required(CONF_WIDTH): cv.int_,
-#                        cv.Required(CONF_HEIGHT): cv.int_,
-#                        cv.Optional(CONF_OFFSET_HEIGHT, default=0): cv.int_,
-#                        cv.Optional(CONF_OFFSET_WIDTH, default=0): cv.int_,
-#                    }
-#                ),
-#            ),
-#            cv.Exclusive(CONF_ROTATION, CONF_ROTATION): validate_rotation,
-#            cv.Exclusive(CONF_TRANSFORM, CONF_ROTATION): cv.Schema(
-#                {
-#                    cv.Optional(CONF_SWAP_XY, default=False): cv.boolean,
-#                    cv.Optional(CONF_MIRROR_X, default=False): cv.boolean,
-#                    cv.Optional(CONF_MIRROR_Y, default=False): cv.boolean,
-#                }
-#            ),
-#        }
-#    )
+        .extend(
+            {
+                cv.GenerateID(): cv.declare_id(ST7701SDisplay),
+                cv.Required(CONF_MODEL): cv.enum(MODELS, upper=True, space="_"),
+                cv.Optional(CONF_DIMENSIONS): cv.Any(
+                    cv.dimensions,
+                    cv.Schema(
+                        {
+                            cv.Required(CONF_WIDTH): cv.int_,
+                            cv.Required(CONF_HEIGHT): cv.int_,
+                            cv.Optional(CONF_OFFSET_HEIGHT, default=0): cv.int_,
+                            cv.Optional(CONF_OFFSET_WIDTH, default=0): cv.int_,
+                        }
+                    ),
+                ),
+                cv.Exclusive(CONF_ROTATION, CONF_ROTATION): validate_rotation,
+                cv.Exclusive(CONF_TRANSFORM, CONF_ROTATION): cv.Schema(
+                    {
+                        cv.Optional(CONF_SWAP_XY, default=False): cv.boolean,
+                        cv.Optional(CONF_MIRROR_X, default=False): cv.boolean,
+                        cv.Optional(CONF_MIRROR_Y, default=False): cv.boolean,
+                    }
+                ),
+            }
+        )
     .extend(cv.polling_component_schema("1s")),
     cv.has_at_most_one_key(CONF_PAGES, CONF_LAMBDA),
     _validate,
