@@ -117,7 +117,7 @@ CONFIG_SCHEMA = cv.All(
 #            ),
 #        }
 #    )
-    .extend(cv.polling_component_schema("1s"))
+    .extend(cv.polling_component_schema("1s")),
     cv.has_at_most_one_key(CONF_PAGES, CONF_LAMBDA),
     _validate,
 )
