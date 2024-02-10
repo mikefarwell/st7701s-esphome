@@ -19,7 +19,7 @@ from esphome.const import (
     CONF_ROTATION,
     #CONF_MIRROR_X,
     #CONF_MIRROR_Y,
-    CONF_SWAP_XY,
+    #CONF_SWAP_XY,
     CONF_COLOR_ORDER,
     CONF_OFFSET_HEIGHT,
     CONF_OFFSET_WIDTH,
@@ -108,13 +108,13 @@ CONFIG_SCHEMA = cv.All(
                     ),
                 ),
                 cv.Exclusive(CONF_ROTATION, CONF_ROTATION): validate_rotation,
-                cv.Exclusive(CONF_TRANSFORM, CONF_ROTATION): cv.Schema(
-                    {
-                        cv.Optional(CONF_SWAP_XY, default=False): cv.boolean,
+                #cv.Exclusive(CONF_TRANSFORM, CONF_ROTATION): cv.Schema(
+                    #{
+                        #cv.Optional(CONF_SWAP_XY, default=False): cv.boolean,
                         #cv.Optional(CONF_MIRROR_X, default=False): cv.boolean,
                         #cv.Optional(CONF_MIRROR_Y, default=False): cv.boolean,
-                    }
-                ),
+                    #}
+                #),
             }
         )
     .extend(cv.polling_component_schema("1s")),
@@ -134,7 +134,7 @@ async def to_code(config):
         cg.add(var.set_color_order(COLOR_ORDERS[config[CONF_COLOR_ORDER]]))
     if CONF_TRANSFORM in config:
         transform = config[CONF_TRANSFORM]
-        cg.add(var.set_swap_xy(transform[CONF_SWAP_XY]))
+        #cg.add(var.set_swap_xy(transform[CONF_SWAP_XY]))
         #cg.add(var.set_mirror_x(transform[CONF_MIRROR_X]))
         #cg.add(var.set_mirror_y(transform[CONF_MIRROR_Y]))
 
