@@ -152,11 +152,11 @@ async def to_code(config):
         dimensions = config[CONF_DIMENSIONS]
         if isinstance(dimensions, dict):
             cg.add(var.set_dimensions(dimensions[CONF_WIDTH], dimensions[CONF_HEIGHT]))
-            cg.add(
-                var.set_offsets(
-                    dimensions[CONF_OFFSET_WIDTH], dimensions[CONF_OFFSET_HEIGHT]
-                )
-            )
+            #cg.add(
+            #    var.set_offsets(
+            #        dimensions[CONF_OFFSET_WIDTH], dimensions[CONF_OFFSET_HEIGHT]
+            #    )
+            #)
         else:
             (width, height) = dimensions
             cg.add(var.set_dimensions(width, height))
