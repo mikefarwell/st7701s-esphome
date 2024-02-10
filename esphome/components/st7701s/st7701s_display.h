@@ -1,5 +1,4 @@
 #pragma once
-#include "esphome/components/spi/spi.h"
 #include "esphome/components/display/display_buffer.h"
 #include "esphome/components/display/display_color_utils.h"
 #include "st7701s_defines.h"
@@ -17,13 +16,7 @@ enum ST7701SColorMode {
   BITS_16 = 0x10,
 };
 
-#ifndef ST7701SDisplay_DATA_RATE
-#define ST7701SDisplay_DATA_RATE spi::DATA_RATE_40MHZ
-#endif  // ST7701SDisplay_DATA_RATE
-
-class ST7701SDisplay : public display::DisplayBuffer,
-                       public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW,
-                                             spi::CLOCK_PHASE_LEADING, ST7701SDisplay_DATA_RATE> {
+class ST7701SDisplay : public display::DisplayBuffer {
  public:
   ST7701SDisplay() = default;
   ST7701SDisplay(uint8_t const *init_sequence, int16_t width, int16_t height, bool invert_colors)
@@ -56,7 +49,6 @@ class ST7701SDisplay : public display::DisplayBuffer,
     }
   }
 
-  void set_dc_pin(GPIOPin *dc_pin) { dc_pin_ = dc_pin; }
   float get_setup_priority() const override;
   void set_reset_pin(GPIOPin *reset) { this->reset_pin_ = reset; }
   void set_palette(const uint8_t *palette) { this->palette_ = palette; }
@@ -135,118 +127,10 @@ class ST7701SDisplay : public display::DisplayBuffer,
   bool mirror_y_{};
 };
 
-//-----------   M5Stack display --------------
-class ST7701SM5Stack : public ST7701SDisplay {
+//-----------   Default display --------------
+class ST7701SDefault : public ST7701SDisplay {
  public:
-  ST7701SM5Stack() : ST7701SDisplay(INITCMD_M5STACK, 320, 240, true) {}
-};
-
-//-----------   M5Stack display --------------
-class ST7701SM5CORE : public ST7701SDisplay {
- public:
-  ST7701SM5CORE() : ST7701SDisplay(INITCMD_M5CORE, 320, 240, true) {}
-};
-
-//-----------   ST7789V display --------------
-class ST7701SST7789V : public ST7701SDisplay {
- public:
-  ST7701SST7789V() : ST7701SDisplay(INITCMD_ST7789V, 240, 320, false) {}
-};
-
-//-----------   ST7701S_24_TFT display --------------
-class ST7701SILI9341 : public ST7701SDisplay {
- public:
-  ST7701SILI9341() : ST7701SDisplay(INITCMD_ILI9341, 240, 320, false) {}
-};
-
-//-----------   ST7701S_24_TFT rotated display --------------
-class ST7701SILI9342 : public ST7701SDisplay {
- public:
-  ST7701SILI9342() : ST7701SDisplay(INITCMD_ILI9341, 320, 240, false) {}
-};
-
-//-----------   ST7701S_??_TFT rotated display --------------
-class ST7701SILI9481 : public ST7701SDisplay {
- public:
-  ST7701SILI9481() : ST7701SDisplay(INITCMD_ILI9481, 480, 320, false) {}
-};
-
-//-----------   ILI9481 in 18 bit mode --------------
-class ST7701SILI948118 : public ST7701SDisplay {
- public:
-  ST7701SILI948118() : ST7701SDisplay(INITCMD_ILI9481_18, 320, 480, true) {}
-};
-
-//-----------   ST7701S_35_TFT rotated display --------------
-class ST7701SILI9486 : public ST7701SDisplay {
- public:
-  ST7701SILI9486() : ST7701SDisplay(INITCMD_ILI9486, 480, 320, false) {}
-};
-
-class ST7701SILI9488 : public ST7701SDisplay {
- public:
-  ST7701SILI9488(const uint8_t *seq = INITCMD_ILI9488) : ST7701SDisplay(seq, 480, 320, true) {}
-
- protected:
-  void set_madctl() override {
-    uint8_t mad = this->color_order_ == display::COLOR_ORDER_BGR ? MADCTL_BGR : MADCTL_RGB;
-    uint8_t dfun = 0x22;
-    this->width_ = 320;
-    this->height_ = 480;
-    if (!(this->swap_xy_ || this->mirror_x_ || this->mirror_y_)) {
-      // no transforms
-    } else if (this->mirror_y_ && this->mirror_x_) {
-      // rotate 180
-      dfun = 0x42;
-    } else if (this->swap_xy_) {
-      this->width_ = 480;
-      this->height_ = 320;
-      mad |= 0x20;
-      if (this->mirror_x_) {
-        dfun = 0x02;
-      } else {
-        dfun = 0x62;
-      }
-    }
-    this->command(ST7701S_DFUNCTR);
-    this->data(0);
-    this->data(dfun);
-    this->command(ST7701S_MADCTL);
-    this->data(mad);
-  }
-};
-//-----------   Waveshare 3.5 Res Touch - ILI9488 interfaced via 16 bit shift register to parallel */
-class WAVESHARERES35 : public ST7701SILI9488 {
- public:
-  WAVESHARERES35() : ST7701SILI9488(INITCMD_WAVESHARE_RES_3_5) {}
-  void data(uint8_t value) override {
-    this->start_data_();
-    this->write_byte(0);
-    this->write_byte(value);
-    this->end_data_();
-  }
-};
-
-//-----------   ST7701S_35_TFT origin colors rotated display --------------
-class ST7701SILI9488A : public ST7701SDisplay {
- public:
-  ST7701SILI9488A() : ST7701SDisplay(INITCMD_ILI9488_A, 480, 320, true) {}
-};
-
-//-----------   ST7701S_35_TFT rotated display --------------
-class ST7701SST7796 : public ST7701SDisplay {
- public:
-  ST7701SST7796() : ST7701SDisplay(INITCMD_ST7796, 320, 480, false) {}
-};
-
-class ST7701SS3Box : public ST7701SDisplay {
- public:
-  ST7701SS3Box() : ST7701SDisplay(INITCMD_S3BOX, 320, 240, false) {}
-};
-
-class ST7701SS3BoxLite : public ST7701SDisplay {
- public:
-  ST7701SS3BoxLite() : ST7701SDisplay(INITCMD_S3BOXLITE, 320, 240, true) {}
+  ST7701SDefault() : ST7701SDisplay(INITCMD_M5STACK, 480, 480, true) {}
 };
 
 }  // namespace st7701s
