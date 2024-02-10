@@ -6,7 +6,7 @@ from esphome.components.display import validate_rotation
 from esphome.core import CORE, HexInt
 from esphome.const import (
     CONF_COLOR_PALETTE,
-    CONF_DC_PIN,
+    #CONF_DC_PIN,
     CONF_ID,
     CONF_LAMBDA,
     CONF_MODEL,
@@ -128,7 +128,7 @@ async def to_code(config):
     var = cg.Pvariable(config[CONF_ID], rhs)
 
     await display.register_display(var, config)
-    dc = await cg.gpio_pin_expression(config[CONF_DC_PIN])
+    #dc = await cg.gpio_pin_expression(config[CONF_DC_PIN])
     cg.add(var.set_dc_pin(dc))
     #if CONF_COLOR_ORDER in config:
     #    cg.add(var.set_color_order(COLOR_ORDERS[config[CONF_COLOR_ORDER]]))
