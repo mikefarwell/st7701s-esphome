@@ -81,6 +81,27 @@ CONFIG_SCHEMA = cv.All(
             {
                 cv.GenerateID(): cv.declare_id(ST7701SDisplay),
                 cv.Required(CONF_MODEL): cv.enum(MODELS, upper=True, space="_"),
+                cv.Required(CONF_RGB_PCLK): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_DE): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_VS): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_HS): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D0): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D1): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D2): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D3): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D4): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D5): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D6): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D7): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D8): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D9): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D10): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D11): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D12): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D13): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D14): pins.gpio_output_pin_schema,
+                cv.Required(CONF_RGB_D15): pins.gpio_output_pin_schema,
+                cv.Required(CONF_LCD_BL): pins.gpio_output_pin_schema,
                 cv.Optional(CONF_DIMENSIONS): cv.Any(
                     cv.dimensions,
                     cv.Schema(
@@ -110,7 +131,31 @@ CONFIG_SCHEMA = cv.All(
 
 async def to_code(config):
     rhs = MODELS[config[CONF_MODEL]].new()
-    var = cg.Pvariable(config[CONF_ID], rhs)
+    var = cg.Pvariable(
+        config[CONF_ID],
+        rhs,
+        config[CONF_RGB_PCLK],
+        config[CONF_RGB_DE],
+        config[CONF_RGB_VS],
+        config[CONF_RGB_HS],
+        config[CONF_RGB_D0],
+        config[CONF_RGB_D1],
+        config[CONF_RGB_D2],
+        config[CONF_RGB_D3],
+        config[CONF_RGB_D4],
+        config[CONF_RGB_D5],
+        config[CONF_RGB_D6],
+        config[CONF_RGB_D7],
+        config[CONF_RGB_D8],
+        config[CONF_RGB_D9],
+        config[CONF_RGB_D10],
+        config[CONF_RGB_D11],
+        config[CONF_RGB_D12],
+        config[CONF_RGB_D13],
+        config[CONF_RGB_D14],
+        config[CONF_RGB_D15],
+        config[CONF_LCD_BL],
+    )
 
     await display.register_display(var, config)
     #if CONF_COLOR_ORDER in config:
