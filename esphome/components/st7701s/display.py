@@ -52,7 +52,6 @@ CONF_RGB_D12 = "rgb_d12"
 CONF_RGB_D13 = "rgb_d13"
 CONF_RGB_D14 = "rgb_d14"
 CONF_RGB_D15 = "rgb_d15"
-CONF_LCD_BL = "lcd_bl"
 
 st7701s_ns = cg.esphome_ns.namespace("st7701s")
 ST7701SDisplay = st7701s_ns.class_(
@@ -123,7 +122,6 @@ CONFIG_SCHEMA = cv.All(
                 cv.Required(CONF_RGB_D13): pins.gpio_output_pin_schema,
                 cv.Required(CONF_RGB_D14): pins.gpio_output_pin_schema,
                 cv.Required(CONF_RGB_D15): pins.gpio_output_pin_schema,
-                cv.Required(CONF_LCD_BL): pins.gpio_output_pin_schema,
                 cv.Optional(CONF_DIMENSIONS): cv.Any(
                     cv.dimensions,
                     cv.Schema(
@@ -176,7 +174,6 @@ async def to_code(config):
         config[CONF_RGB_D13],
         config[CONF_RGB_D14],
         config[CONF_RGB_D15],
-        config[CONF_LCD_BL],
     )
 
     await display.register_display(var, config)
