@@ -151,7 +151,7 @@ CONFIG_SCHEMA = cv.All(
 
 async def to_code(config):
     rhs = MODELS[config[CONF_MODEL]].new()
-    var = cg.Pvariable(
+    var = cg.new_Pvariable(
         config[CONF_ID],
         rhs,
         config[CONF_RGB_PCLK],
