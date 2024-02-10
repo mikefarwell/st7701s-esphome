@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import core, pins
-from esphome.components import display, spi, font
+from esphome.components import display, font
 from esphome.components.display import validate_rotation
 from esphome.core import CORE, HexInt
 from esphome.const import (
@@ -27,14 +27,10 @@ from esphome.const import (
     CONF_INVERT_COLORS,
 )
 
-DEPENDENCIES = ["spi"]
-
-
 def AUTO_LOAD():
     if CORE.is_esp32:
         return ["psram"]
     return []
-
 
 CODEOWNERS = ["@mikefarwell"]
 
@@ -42,7 +38,6 @@ st7701s_ns = cg.esphome_ns.namespace("st7701s")
 ST7701SDisplay = st7701s_ns.class_(
     "ST7701SDisplay",
     cg.PollingComponent,
-    spi.SPIDevice,
     display.Display,
     display.DisplayBuffer,
 )
@@ -51,22 +46,7 @@ ST7701SColorMode = st7701s_ns.enum("ST7701SColorMode")
 ColorOrder = display.display_ns.enum("ColorMode")
 
 MODELS = {
-    "M5STACK": st7701s_ns.class_("ST7701SM5Stack", ST7701SDisplay),
-    "M5CORE": st7701s_ns.class_("ST7701SM5CORE", ST7701SDisplay),
-    "TFT_2.4": st7701s_ns.class_("ST7701SILI9341", ST7701SDisplay),
-    "TFT_2.4R": st7701s_ns.class_("ST7701SILI9342", ST7701SDisplay),
-    "ILI9341": st7701s_ns.class_("ST7701SILI9341", ST7701SDisplay),
-    "ILI9342": st7701s_ns.class_("ST7701SILI9342", ST7701SDisplay),
-    "ILI9481": st7701s_ns.class_("ST7701SILI9481", ST7701SDisplay),
-    "ILI9481-18": st7701s_ns.class_("ST7701SILI948118", ST7701SDisplay),
-    "ILI9486": st7701s_ns.class_("ST7701SILI9486", ST7701SDisplay),
-    "ILI9488": st7701s_ns.class_("ST7701SILI9488", ST7701SDisplay),
-    "ILI9488_A": st7701s_ns.class_("ST7701SILI9488A", ST7701SDisplay),
-    "ST7796": st7701s_ns.class_("ST7701SST7796", ST7701SDisplay),
-    "ST7789V": st7701s_ns.class_("ST7701SST7789V", ST7701SDisplay),
-    "S3BOX": st7701s_ns.class_("ST7701SS3Box", ST7701SDisplay),
-    "S3BOX_LITE": st7701s_ns.class_("ST7701SS3BoxLite", ST7701SDisplay),
-    "WAVESHARE_RES_3_5": st7701s_ns.class_("WAVESHARERES35", ST7701SDisplay),
+    "DEFAULT": st7701s_ns.class_("DEFAULT", ST7701SDisplay)
 }
 
 COLOR_ORDERS = {
@@ -152,7 +132,6 @@ CONFIG_SCHEMA = cv.All(
         }
     )
     .extend(cv.polling_component_schema("1s"))
-    .extend(spi.spi_device_schema(False, "40MHz")),
     cv.has_at_most_one_key(CONF_PAGES, CONF_LAMBDA),
     _validate,
 )
@@ -163,7 +142,6 @@ async def to_code(config):
     var = cg.Pvariable(config[CONF_ID], rhs)
 
     await display.register_display(var, config)
-    await spi.register_spi_device(var, config)
     dc = await cg.gpio_pin_expression(config[CONF_DC_PIN])
     cg.add(var.set_dc_pin(dc))
     if CONF_COLOR_ORDER in config:
