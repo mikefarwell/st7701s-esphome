@@ -32,6 +32,28 @@ def AUTO_LOAD():
 
 CODEOWNERS = ["@mikefarwell"]
 
+CONF_RGB_PCLK = "rgb_pclk"
+CONF_RGB_DE = "rgb_de"
+CONF_RGB_VS = "rgb_vs"
+CONF_RGB_HS = "rgb_hs"
+CONF_RGB_D0 = "rgb_d0"
+CONF_RGB_D1 = "rgb_d1"
+CONF_RGB_D2 = "rgb_d2"
+CONF_RGB_D3 = "rgb_d3"
+CONF_RGB_D4 = "rgb_d4"
+CONF_RGB_D5 = "rgb_d5"
+CONF_RGB_D6 = "rgb_d6"
+CONF_RGB_D7 = "rgb_d7"
+CONF_RGB_D8 = "rgb_d8"
+CONF_RGB_D9 = "rgb_d9"
+CONF_RGB_D10 = "rgb_d10"
+CONF_RGB_D11 = "rgb_d11"
+CONF_RGB_D12 = "rgb_d12"
+CONF_RGB_D13 = "rgb_d13"
+CONF_RGB_D14 = "rgb_d14"
+CONF_RGB_D15 = "rgb_d15"
+CONF_LCD_BL = "lcd_bl"
+
 st7701s_ns = cg.esphome_ns.namespace("st7701s")
 ST7701SDisplay = st7701s_ns.class_(
     "ST7701SDisplay",
