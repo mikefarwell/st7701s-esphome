@@ -106,21 +106,6 @@ CONFIG_SCHEMA = cv.All(
                     }
                 ),
             ),
-            cv.Required(CONF_DC_PIN): pins.gpio_output_pin_schema,
-            cv.Optional(CONF_RESET_PIN): pins.gpio_output_pin_schema,
-            cv.Optional(CONF_LED_PIN): cv.invalid(
-                "This property is removed. To use the backlight use proper light component."
-            ),
-            cv.Optional(CONF_COLOR_PALETTE, default="NONE"): COLOR_PALETTE,
-            cv.GenerateID(CONF_RAW_DATA_ID): cv.declare_id(cg.uint8),
-            cv.Optional(CONF_COLOR_PALETTE_IMAGES, default=[]): cv.ensure_list(
-                cv.file_
-            ),
-            cv.Optional(CONF_INVERT_DISPLAY): cv.invalid(
-                "'invert_display' has been replaced by 'invert_colors'"
-            ),
-            cv.Optional(CONF_INVERT_COLORS): cv.boolean,
-            cv.Optional(CONF_COLOR_ORDER): cv.one_of(*COLOR_ORDERS.keys(), upper=True),
             cv.Exclusive(CONF_ROTATION, CONF_ROTATION): validate_rotation,
             cv.Exclusive(CONF_TRANSFORM, CONF_ROTATION): cv.Schema(
                 {
