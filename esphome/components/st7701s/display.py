@@ -145,7 +145,7 @@ async def to_code(config):
             cg.add(var.set_dimensions(width, height))
 
     rhs = None
-        cg.add(var.set_buffer_color_mode(ST7701SColorMode.BITS_16))
+    cg.add(var.set_buffer_color_mode(ST7701SColorMode.BITS_16))
 
     if rhs is not None:
         prog_arr = cg.progmem_array(config[CONF_RAW_DATA_ID], rhs)
