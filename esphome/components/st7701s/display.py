@@ -1,100 +1,178 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import pins
-from esphome.components import display
+from esphome import core, pins
+from esphome.components import display, spi, font
+from esphome.components.display import validate_rotation
+from esphome.core import CORE, HexInt
 from esphome.const import (
+    CONF_COLOR_PALETTE,
+    CONF_DC_PIN,
     CONF_ID,
     CONF_LAMBDA,
     CONF_MODEL,
+    CONF_RAW_DATA_ID,
     CONF_PAGES,
+    CONF_RESET_PIN,
+    CONF_DIMENSIONS,
+    CONF_WIDTH,
+    CONF_HEIGHT,
+    CONF_ROTATION,
+    CONF_MIRROR_X,
+    CONF_MIRROR_Y,
+    CONF_SWAP_XY,
+    CONF_COLOR_ORDER,
+    CONF_OFFSET_HEIGHT,
+    CONF_OFFSET_WIDTH,
+    CONF_TRANSFORM,
     CONF_INVERT_COLORS,
 )
-from . import ST7701S_ns
+
+DEPENDENCIES = ["spi"]
+
+
+def AUTO_LOAD():
+    if CORE.is_esp32:
+        return ["psram"]
+    return []
+
 
 CODEOWNERS = ["@mikefarwell"]
 
-CONF_RGB_PCLK = "rgb_pclk"
-CONF_RGB_DE = "rgb_de"
-CONF_RGB_VS = "rgb_vs"
-CONF_RGB_HS = "rgb_hs"
-CONF_RGB_D0 = "rgb_d0"
-CONF_RGB_D1 = "rgb_d1"
-CONF_RGB_D2 = "rgb_d2"
-CONF_RGB_D3 = "rgb_d3"
-CONF_RGB_D4 = "rgb_d4"
-CONF_RGB_D5 = "rgb_d5"
-CONF_RGB_D6 = "rgb_d6"
-CONF_RGB_D7 = "rgb_d7"
-CONF_RGB_D8 = "rgb_d8"
-CONF_RGB_D9 = "rgb_d9"
-CONF_RGB_D10 = "rgb_d10"
-CONF_RGB_D11 = "rgb_d11"
-CONF_RGB_D12 = "rgb_d12"
-CONF_RGB_D13 = "rgb_d13"
-CONF_RGB_D14 = "rgb_d14"
-CONF_RGB_D15 = "rgb_d15"
-CONF_LCD_BL = "lcd_bl"
-CONF_DEVICE_WIDTH = "device_width"
-CONF_DEVICE_HEIGHT = "device_height"
-
-PARALLELST7701S = ST7701S_ns.class_(
-    "ST7701S", cg.PollingComponent, display.DisplayBuffer
+st7701s_ns = cg.esphome_ns.namespace("st7701s")
+ST7701SDisplay = st7701s_ns.class_(
+    "ST7701SDisplay",
+    cg.PollingComponent,
+    spi.SPIDevice,
+    display.Display,
+    display.DisplayBuffer,
 )
-ST7701SModel = ST7701S_ns.enum("ST7701SModel")
+
+ST7701SColorMode = st7701s_ns.enum("ST7701SColorMode")
+ColorOrder = display.display_ns.enum("ColorMode")
 
 MODELS = {
-    "DEFAULT": ST7701SModel.ST7701S_DEFAULT
+    "M5STACK": st7701s_ns.class_("ST7701SM5Stack", ST7701SDisplay),
+    "M5CORE": st7701s_ns.class_("ST7701SM5CORE", ST7701SDisplay),
+    "TFT_2.4": st7701s_ns.class_("ST7701SILI9341", ST7701SDisplay),
+    "TFT_2.4R": st7701s_ns.class_("ST7701SILI9342", ST7701SDisplay),
+    "ILI9341": st7701s_ns.class_("ST7701SILI9341", ST7701SDisplay),
+    "ILI9342": st7701s_ns.class_("ST7701SILI9342", ST7701SDisplay),
+    "ILI9481": st7701s_ns.class_("ST7701SILI9481", ST7701SDisplay),
+    "ILI9481-18": st7701s_ns.class_("ST7701SILI948118", ST7701SDisplay),
+    "ILI9486": st7701s_ns.class_("ST7701SILI9486", ST7701SDisplay),
+    "ILI9488": st7701s_ns.class_("ST7701SILI9488", ST7701SDisplay),
+    "ILI9488_A": st7701s_ns.class_("ST7701SILI9488A", ST7701SDisplay),
+    "ST7796": st7701s_ns.class_("ST7701SST7796", ST7701SDisplay),
+    "ST7789V": st7701s_ns.class_("ST7701SST7789V", ST7701SDisplay),
+    "S3BOX": st7701s_ns.class_("ST7701SS3Box", ST7701SDisplay),
+    "S3BOX_LITE": st7701s_ns.class_("ST7701SS3BoxLite", ST7701SDisplay),
+    "WAVESHARE_RES_3_5": st7701s_ns.class_("WAVESHARERES35", ST7701SDisplay),
 }
-ST7701S_MODEL = cv.enum(MODELS, upper=True, space="_")
+
+COLOR_ORDERS = {
+    "RGB": ColorOrder.COLOR_ORDER_RGB,
+    "BGR": ColorOrder.COLOR_ORDER_BGR,
+}
+
+COLOR_PALETTE = cv.one_of("NONE", "GRAYSCALE", "IMAGE_ADAPTIVE")
+
+CONF_LED_PIN = "led_pin"
+CONF_COLOR_PALETTE_IMAGES = "color_palette_images"
+CONF_INVERT_DISPLAY = "invert_display"
 
 
-ST7701S_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
-    {
-        cv.Required(CONF_MODEL): ST7701S_MODEL,
-    }
-).extend(cv.polling_component_schema("1s"))
+def _validate(config):
+    if config.get(CONF_COLOR_PALETTE) == "IMAGE_ADAPTIVE" and not config.get(
+        CONF_COLOR_PALETTE_IMAGES
+    ):
+        raise cv.Invalid(
+            "Color palette in IMAGE_ADAPTIVE mode requires at least one 'color_palette_images' entry to generate palette"
+        )
+    if (
+        config.get(CONF_COLOR_PALETTE_IMAGES)
+        and config.get(CONF_COLOR_PALETTE) != "IMAGE_ADAPTIVE"
+    ):
+        raise cv.Invalid(
+            "Providing color palette images requires palette mode to be 'IMAGE_ADAPTIVE'"
+        )
+    if CORE.is_esp8266 and config.get(CONF_MODEL) not in [
+        "M5STACK",
+        "TFT_2.4",
+        "TFT_2.4R",
+        "ILI9341",
+        "ILI9342",
+        "ST7789V",
+    ]:
+        raise cv.Invalid(
+            "Provided model can't run on ESP8266. Use an ESP32 with PSRAM onboard"
+        )
+    return config
+
 
 CONFIG_SCHEMA = cv.All(
-    ST7701S_SCHEMA.extend(
+    font.validate_pillow_installed,
+    display.FULL_DISPLAY_SCHEMA.extend(
         {
-            cv.GenerateID(): cv.declare_id(PARALLELST7701S),
-            cv.Required(CONF_RGB_PCLK): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_DE): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_VS): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_HS): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D0): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D1): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D2): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D3): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D4): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D5): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D6): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D7): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D8): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D9): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D10): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D11): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D12): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D13): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D14): pins.gpio_output_pin_schema,
-            cv.Required(CONF_RGB_D15): pins.gpio_output_pin_schema,
-            cv.Required(CONF_LCD_BL): pins.gpio_output_pin_schema,
-            cv.Required(CONF_DEVICE_WIDTH): cv.int_,
-            cv.Required(CONF_DEVICE_HEIGHT): cv.int_,
-            cv.Required(CONF_COL_START): cv.int_,
-            cv.Required(CONF_ROW_START): cv.int_,
-            cv.Optional(CONF_EIGHT_BIT_COLOR, default=False): cv.boolean,
-            cv.Optional(CONF_USE_BGR, default=False): cv.boolean,
-            cv.Optional(CONF_INVERT_COLORS, default=False): cv.boolean,
+            cv.GenerateID(): cv.declare_id(ST7701SDisplay),
+            cv.Required(CONF_MODEL): cv.enum(MODELS, upper=True, space="_"),
+            cv.Optional(CONF_DIMENSIONS): cv.Any(
+                cv.dimensions,
+                cv.Schema(
+                    {
+                        cv.Required(CONF_WIDTH): cv.int_,
+                        cv.Required(CONF_HEIGHT): cv.int_,
+                        cv.Optional(CONF_OFFSET_HEIGHT, default=0): cv.int_,
+                        cv.Optional(CONF_OFFSET_WIDTH, default=0): cv.int_,
+                    }
+                ),
+            ),
+            cv.Required(CONF_DC_PIN): pins.gpio_output_pin_schema,
+            cv.Optional(CONF_RESET_PIN): pins.gpio_output_pin_schema,
+            cv.Optional(CONF_LED_PIN): cv.invalid(
+                "This property is removed. To use the backlight use proper light component."
+            ),
+            cv.Optional(CONF_COLOR_PALETTE, default="NONE"): COLOR_PALETTE,
+            cv.GenerateID(CONF_RAW_DATA_ID): cv.declare_id(cg.uint8),
+            cv.Optional(CONF_COLOR_PALETTE_IMAGES, default=[]): cv.ensure_list(
+                cv.file_
+            ),
+            cv.Optional(CONF_INVERT_DISPLAY): cv.invalid(
+                "'invert_display' has been replaced by 'invert_colors'"
+            ),
+            cv.Optional(CONF_INVERT_COLORS): cv.boolean,
+            cv.Optional(CONF_COLOR_ORDER): cv.one_of(*COLOR_ORDERS.keys(), upper=True),
+            cv.Exclusive(CONF_ROTATION, CONF_ROTATION): validate_rotation,
+            cv.Exclusive(CONF_TRANSFORM, CONF_ROTATION): cv.Schema(
+                {
+                    cv.Optional(CONF_SWAP_XY, default=False): cv.boolean,
+                    cv.Optional(CONF_MIRROR_X, default=False): cv.boolean,
+                    cv.Optional(CONF_MIRROR_Y, default=False): cv.boolean,
+                }
+            ),
         }
     )
-    .extend(cv.COMPONENT_SCHEMA)
+    .extend(cv.polling_component_schema("1s"))
+    .extend(spi.spi_device_schema(False, "40MHz")),
     cv.has_at_most_one_key(CONF_PAGES, CONF_LAMBDA),
+    _validate,
 )
 
 
-async def setup_ST7701S(var, config):
+async def to_code(config):
+    rhs = MODELS[config[CONF_MODEL]].new()
+    var = cg.Pvariable(config[CONF_ID], rhs)
+
     await display.register_display(var, config)
+    await spi.register_spi_device(var, config)
+    dc = await cg.gpio_pin_expression(config[CONF_DC_PIN])
+    cg.add(var.set_dc_pin(dc))
+    if CONF_COLOR_ORDER in config:
+        cg.add(var.set_color_order(COLOR_ORDERS[config[CONF_COLOR_ORDER]]))
+    if CONF_TRANSFORM in config:
+        transform = config[CONF_TRANSFORM]
+        cg.add(var.set_swap_xy(transform[CONF_SWAP_XY]))
+        cg.add(var.set_mirror_x(transform[CONF_MIRROR_X]))
+        cg.add(var.set_mirror_y(transform[CONF_MIRROR_Y]))
 
     if CONF_LAMBDA in config:
         lambda_ = await cg.process_lambda(
@@ -102,41 +180,65 @@ async def setup_ST7701S(var, config):
         )
         cg.add(var.set_writer(lambda_))
 
+    if CONF_RESET_PIN in config:
+        reset = await cg.gpio_pin_expression(config[CONF_RESET_PIN])
+        cg.add(var.set_reset_pin(reset))
 
-async def to_code(config):
-    var = cg.new_Pvariable(
-        config[CONF_ID],
-        config[CONF_MODEL],
-        config[CONF_RGB_PCLK],
-        config[CONF_RGB_DE],
-        config[CONF_RGB_VS],
-        config[CONF_RGB_HS],
-        config[CONF_RGB_D0],
-        config[CONF_RGB_D1],
-        config[CONF_RGB_D2],
-        config[CONF_RGB_D3],
-        config[CONF_RGB_D4],
-        config[CONF_RGB_D5],
-        config[CONF_RGB_D6],
-        config[CONF_RGB_D7],
-        config[CONF_RGB_D8],
-        config[CONF_RGB_D9],
-        config[CONF_RGB_D10],
-        config[CONF_RGB_D11],
-        config[CONF_RGB_D12],
-        config[CONF_RGB_D13],
-        config[CONF_RGB_D14],
-        config[CONF_RGB_D15],
-        config[CONF_LCD_BL],
-        config[CONF_DEVICE_WIDTH],
-        config[CONF_DEVICE_HEIGHT],
-        config[CONF_COL_START],
-        config[CONF_ROW_START],
-        config[CONF_EIGHT_BIT_COLOR],
-        config[CONF_USE_BGR],
-        config[CONF_INVERT_COLORS],
-    )
-    await setup_ST7701S(var, config)
+    if CONF_DIMENSIONS in config:
+        dimensions = config[CONF_DIMENSIONS]
+        if isinstance(dimensions, dict):
+            cg.add(var.set_dimensions(dimensions[CONF_WIDTH], dimensions[CONF_HEIGHT]))
+            cg.add(
+                var.set_offsets(
+                    dimensions[CONF_OFFSET_WIDTH], dimensions[CONF_OFFSET_HEIGHT]
+                )
+            )
+        else:
+            (width, height) = dimensions
+            cg.add(var.set_dimensions(width, height))
 
-    dc = await cg.gpio_pin_expression(config[CONF_DC_PIN])
-    cg.add(var.set_dc_pin(dc))
+    rhs = None
+    if config[CONF_COLOR_PALETTE] == "GRAYSCALE":
+        cg.add(var.set_buffer_color_mode(ST7701SColorMode.BITS_8_INDEXED))
+        rhs = []
+        for x in range(256):
+            rhs.extend([HexInt(x), HexInt(x), HexInt(x)])
+    elif config[CONF_COLOR_PALETTE] == "IMAGE_ADAPTIVE":
+        cg.add(var.set_buffer_color_mode(ST7701SColorMode.BITS_8_INDEXED))
+        from PIL import Image
+
+        def load_image(filename):
+            path = CORE.relative_config_path(filename)
+            try:
+                return Image.open(path)
+            except Exception as e:
+                raise core.EsphomeError(f"Could not load image file {path}: {e}")
+
+        # make a wide horizontal combined image.
+        images = [load_image(x) for x in config[CONF_COLOR_PALETTE_IMAGES]]
+        total_width = sum(i.width for i in images)
+        max_height = max(i.height for i in images)
+
+        ref_image = Image.new("RGB", (total_width, max_height))
+        x = 0
+        for i in images:
+            ref_image.paste(i, (x, 0))
+            x = x + i.width
+
+        # reduce the colors on combined image to 256.
+        converted = ref_image.convert("P", palette=Image.Palette.ADAPTIVE, colors=256)
+        # if you want to verify how the images look use
+        # ref_image.save("ref_in.png")
+        # converted.save("ref_out.png")
+        palette = converted.getpalette()
+        assert len(palette) == 256 * 3
+        rhs = palette
+    else:
+        cg.add(var.set_buffer_color_mode(ST7701SColorMode.BITS_16))
+
+    if rhs is not None:
+        prog_arr = cg.progmem_array(config[CONF_RAW_DATA_ID], rhs)
+        cg.add(var.set_palette(prog_arr))
+
+    if CONF_INVERT_COLORS in config:
+        cg.add(var.invert_colors(config[CONF_INVERT_COLORS]))
