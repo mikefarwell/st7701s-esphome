@@ -17,8 +17,8 @@ from esphome.const import (
     CONF_WIDTH,
     CONF_HEIGHT,
     CONF_ROTATION,
-    CONF_MIRROR_X,
-    CONF_MIRROR_Y,
+    #CONF_MIRROR_X,
+    #CONF_MIRROR_Y,
     CONF_SWAP_XY,
     CONF_COLOR_ORDER,
     CONF_OFFSET_HEIGHT,
@@ -111,8 +111,8 @@ CONFIG_SCHEMA = cv.All(
                 cv.Exclusive(CONF_TRANSFORM, CONF_ROTATION): cv.Schema(
                     {
                         cv.Optional(CONF_SWAP_XY, default=False): cv.boolean,
-                        cv.Optional(CONF_MIRROR_X, default=False): cv.boolean,
-                        cv.Optional(CONF_MIRROR_Y, default=False): cv.boolean,
+                        #cv.Optional(CONF_MIRROR_X, default=False): cv.boolean,
+                        #cv.Optional(CONF_MIRROR_Y, default=False): cv.boolean,
                     }
                 ),
             }
@@ -135,8 +135,8 @@ async def to_code(config):
     if CONF_TRANSFORM in config:
         transform = config[CONF_TRANSFORM]
         cg.add(var.set_swap_xy(transform[CONF_SWAP_XY]))
-        cg.add(var.set_mirror_x(transform[CONF_MIRROR_X]))
-        cg.add(var.set_mirror_y(transform[CONF_MIRROR_Y]))
+        #cg.add(var.set_mirror_x(transform[CONF_MIRROR_X]))
+        #cg.add(var.set_mirror_y(transform[CONF_MIRROR_Y]))
 
     if CONF_LAMBDA in config:
         lambda_ = await cg.process_lambda(
