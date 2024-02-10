@@ -20,11 +20,11 @@ from esphome.const import (
     #CONF_MIRROR_X,
     #CONF_MIRROR_Y,
     #CONF_SWAP_XY,
-    CONF_COLOR_ORDER,
-    CONF_OFFSET_HEIGHT,
-    CONF_OFFSET_WIDTH,
-    CONF_TRANSFORM,
-    CONF_INVERT_COLORS,
+    #CONF_COLOR_ORDER,
+    #CONF_OFFSET_HEIGHT,
+    #CONF_OFFSET_WIDTH,
+    #CONF_TRANSFORM,
+    #CONF_INVERT_COLORS,
 )
 
 def AUTO_LOAD():
@@ -102,8 +102,8 @@ CONFIG_SCHEMA = cv.All(
                         {
                             cv.Required(CONF_WIDTH): cv.int_,
                             cv.Required(CONF_HEIGHT): cv.int_,
-                            cv.Optional(CONF_OFFSET_HEIGHT, default=0): cv.int_,
-                            cv.Optional(CONF_OFFSET_WIDTH, default=0): cv.int_,
+                            #cv.Optional(CONF_OFFSET_HEIGHT, default=0): cv.int_,
+                            #cv.Optional(CONF_OFFSET_WIDTH, default=0): cv.int_,
                         }
                     ),
                 ),
@@ -130,10 +130,10 @@ async def to_code(config):
     await display.register_display(var, config)
     dc = await cg.gpio_pin_expression(config[CONF_DC_PIN])
     cg.add(var.set_dc_pin(dc))
-    if CONF_COLOR_ORDER in config:
-        cg.add(var.set_color_order(COLOR_ORDERS[config[CONF_COLOR_ORDER]]))
-    if CONF_TRANSFORM in config:
-        transform = config[CONF_TRANSFORM]
+    #if CONF_COLOR_ORDER in config:
+    #    cg.add(var.set_color_order(COLOR_ORDERS[config[CONF_COLOR_ORDER]]))
+    #if CONF_TRANSFORM in config:
+    #    transform = config[CONF_TRANSFORM]
         #cg.add(var.set_swap_xy(transform[CONF_SWAP_XY]))
         #cg.add(var.set_mirror_x(transform[CONF_MIRROR_X]))
         #cg.add(var.set_mirror_y(transform[CONF_MIRROR_Y]))
@@ -204,5 +204,5 @@ async def to_code(config):
         prog_arr = cg.progmem_array(config[CONF_RAW_DATA_ID], rhs)
         cg.add(var.set_palette(prog_arr))
 
-    if CONF_INVERT_COLORS in config:
-        cg.add(var.invert_colors(config[CONF_INVERT_COLORS]))
+    #if CONF_INVERT_COLORS in config:
+    #    cg.add(var.invert_colors(config[CONF_INVERT_COLORS]))
