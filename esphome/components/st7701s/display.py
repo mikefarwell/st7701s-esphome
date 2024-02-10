@@ -91,7 +91,8 @@ def _validate(config):
 
 CONFIG_SCHEMA = cv.All(
     font.validate_pillow_installed,
-    display.FULL_DISPLAY_SCHEMA#.extend(
+    display.FULL_DISPLAY_SCHEMA
+#    .extend(
 #        {
 #            cv.GenerateID(): cv.declare_id(ST7701SDisplay),
 #            cv.Required(CONF_MODEL): cv.enum(MODELS, upper=True, space="_"),
