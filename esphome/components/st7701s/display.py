@@ -114,8 +114,8 @@ CONFIG_SCHEMA = cv.All(
 #                    cv.Optional(CONF_MIRROR_Y, default=False): cv.boolean,
 #                }
 #            ),
-        }
-    )
+#        }
+#    )
     .extend(cv.polling_component_schema("1s"))
     cv.has_at_most_one_key(CONF_PAGES, CONF_LAMBDA),
     _validate,
